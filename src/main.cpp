@@ -13,6 +13,7 @@
  */
 
 //GOOD MORNING, GOOD AFTERNOON, GOOD NIGHT
+//GOODBYE, SEE YOU TOMORROW!
 
 #include <Arduino.h>
 #include <SPI.h>
