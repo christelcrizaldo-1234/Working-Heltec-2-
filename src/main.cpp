@@ -12,6 +12,8 @@
  * ============================================================
  */
 
+//GOOD MORNING, GOOD AFTERNOON, GOOD NIGHT
+
 #include <Arduino.h>
 #include <SPI.h>
 #include <RadioLib.h>
