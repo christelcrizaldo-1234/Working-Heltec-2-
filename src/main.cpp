@@ -21,8 +21,8 @@
 // ─────────────────────────────────────────────
 //  WiFi
 // ─────────────────────────────────────────────
-#define WIFI_SSID  "Bobby"
-#define WIFI_PASS  "babababa"
+#define WIFI_SSID  "tel"
+#define WIFI_PASS  "haiihehe"
 
 // ─────────────────────────────────────────────
 //  LoRa Pins
