@@ -63,6 +63,9 @@ struct SensorData {
   float air_temperature  = -1;
   float humidity         = -1;
   float distance         = -1;
+  float bat1             = -1;   // <-- Node 1 battery
+  float bat2             = -1;   // <-- Node 2 battery
+  float bat3             = -1;   // <-- Node 3 battery
   int   lora_rssi        = 0;
   float lora_snr         = 0;
   int   packet_count     = 0;
@@ -73,23 +76,23 @@ SensorData latest;
 
 // ─────────────────────────────────────────────
 //  Parse LoRa CSV payload
-//  Format: H1,<moisture>,<soilTemp>,<ec>,<ph>,<airTemp>,<humidity>,<distance>
+//  Format: H1,<moisture>,<soilTemp>,<ec>,<ph>,<airTemp>,<humidity>,<distance>,<bat1>,<bat2>,<bat3>
 // ─────────────────────────────────────────────
 bool parsePayload(const String &raw) {
   if (!raw.startsWith("H1,")) return false;
 
   String s = raw.substring(3);
-  float vals[7];
+  float vals[10];
   int idx = 0, start = 0;
 
-  for (int i = 0; i <= (int)s.length() && idx < 7; i++) {
+  for (int i = 0; i <= (int)s.length() && idx < 10; i++) {
     if (i == (int)s.length() || s[i] == ',') {
       vals[idx++] = s.substring(start, i).toFloat();
       start = i + 1;
     }
   }
 
-  if (idx < 7) return false;
+  if (idx < 10) return false;
 
   latest.soil_moisture    = vals[0];
   latest.soil_temperature = vals[1];
@@ -98,6 +101,9 @@ bool parsePayload(const String &raw) {
   latest.air_temperature  = vals[4];
   latest.humidity         = vals[5];
   latest.distance         = vals[6];
+  latest.bat1             = vals[7];   // <-- ADDED
+  latest.bat2             = vals[8];   // <-- ADDED
+  latest.bat3             = vals[9];   // <-- ADDED
   return true;
 }
 
@@ -107,6 +113,22 @@ bool parsePayload(const String &raw) {
 String fmt(float v, int decimals = 2) {
   if (v < 0) return "<span style='color:#888'>N/A</span>";
   return String(v, decimals);
+}
+
+// ─────────────────────────────────────────────
+//  Battery bar helper for web dashboard
+// ─────────────────────────────────────────────
+String batBar(float v) {
+  if (v < 0) return "<span style='color:#888'>N/A</span>";
+
+  // 18650: ~3.0V empty, ~4.2V full
+  int pct = constrain((int)((v - 3.0f) / (4.2f - 3.0f) * 100.0f), 0, 100);
+  String color = pct > 50 ? "#8bc34a" : pct > 20 ? "#ff9800" : "#f44336";
+
+  String out = String(v, 2) + "V &nbsp;";
+  out += "<span style='font-size:0.8em;color:" + color + "'>";
+  out += String(pct) + "%</span>";
+  return out;
 }
 
 // ─────────────────────────────────────────────
@@ -150,29 +172,38 @@ void handleRoot() {
   html += latest.last_received;
   html += R"rawhtml(</p>
 
-  <div class="grid">
+  <div class="grid">)rawhtml";
 
-    <div class="card soil">
-      <h2>🌾 LilyGO 1 — Soil Sensor</h2>
-      <div class="row"><span class="label">Soil Moisture</span>   <span class="value">)rawhtml";
+  // ── Node 1 — Soil ──
+  html += "<div class='card soil'><h2>🌾 LilyGO 1 — Soil Sensor</h2>";
+  html += "<div class='row'><span class='label'>Soil Moisture</span><span class='value'>";
   html += fmt(latest.soil_moisture); html += " %</span></div>";
   html += "<div class='row'><span class='label'>Soil Temperature</span><span class='value'>";
   html += fmt(latest.soil_temperature); html += " °C</span></div>";
   html += "<div class='row'><span class='label'>Conductivity</span><span class='value'>";
   html += fmt(latest.conductivity); html += " µS/cm</span></div>";
   html += "<div class='row'><span class='label'>pH</span><span class='value'>";
-  html += fmt(latest.ph); html += "</span></div></div>";
+  html += fmt(latest.ph); html += "</span></div>";
+  html += "<div class='row'><span class='label'>🔋 Battery</span><span class='value'>";  // <-- ADDED
+  html += batBar(latest.bat1); html += "</span></div></div>";                            // <-- ADDED
 
+  // ── Node 2 — SHT31 ──
   html += "<div class='card air'><h2>💧 LilyGO 2 — SHT31 Temp & Humidity</h2>";
   html += "<div class='row'><span class='label'>Air Temperature</span><span class='value'>";
   html += fmt(latest.air_temperature); html += " °C</span></div>";
   html += "<div class='row'><span class='label'>Humidity</span><span class='value'>";
-  html += fmt(latest.humidity); html += " %</span></div></div>";
+  html += fmt(latest.humidity); html += " %</span></div>";
+  html += "<div class='row'><span class='label'>🔋 Battery</span><span class='value'>";  // <-- ADDED
+  html += batBar(latest.bat2); html += "</span></div></div>";                            // <-- ADDED
 
+  // ── Node 3 — Ultrasonic ──
   html += "<div class='card dist'><h2>📏 LilyGO 3 — Ultrasonic</h2>";
   html += "<div class='row'><span class='label'>Distance</span><span class='value'>";
-  html += fmt(latest.distance, 3); html += " m</span></div></div>";
+  html += fmt(latest.distance, 3); html += " m</span></div>";
+  html += "<div class='row'><span class='label'>🔋 Battery</span><span class='value'>";  // <-- ADDED
+  html += batBar(latest.bat3); html += "</span></div></div>";                            // <-- ADDED
 
+  // ── LoRa Link Quality ──
   html += "<div class='card lora'><h2>📡 LoRa Link Quality</h2>";
   html += "<div class='row'><span class='label'>RSSI</span><span class='value'>";
   html += String(latest.lora_rssi); html += " dBm</span></div>";
@@ -215,17 +246,20 @@ void printSerial(int rssi, float snr) {
   Serial.printf( "  LoRa RSSI: %d dBm   |  SNR: %.2f dB\n", rssi, snr);
   Serial.println("+======================================================+");
   Serial.println("  [LilyGO1 - Soil Sensor] ------------------------------");
-  Serial.printf( "    Soil Moisture   : %s %%\n",    latest.soil_moisture    >= 0 ? String(latest.soil_moisture, 2).c_str()    : "N/A");
+  Serial.printf( "    Soil Moisture   : %s %%\n",    latest.soil_moisture    >= 0 ? String(latest.soil_moisture,    2).c_str() : "N/A");
   Serial.printf( "    Soil Temperature: %s C\n",     latest.soil_temperature >= 0 ? String(latest.soil_temperature, 2).c_str() : "N/A");
-  Serial.printf( "    Conductivity    : %s uS/cm\n", latest.conductivity     >= 0 ? String(latest.conductivity, 2).c_str()     : "N/A");
-  Serial.printf( "    pH              : %s\n",       latest.ph               >= 0 ? String(latest.ph, 2).c_str()               : "N/A");
+  Serial.printf( "    Conductivity    : %s uS/cm\n", latest.conductivity     >= 0 ? String(latest.conductivity,     2).c_str() : "N/A");
+  Serial.printf( "    pH              : %s\n",       latest.ph               >= 0 ? String(latest.ph,               2).c_str() : "N/A");
+  Serial.printf( "    Battery Voltage : %s V\n",     latest.bat1             >= 0 ? String(latest.bat1,             2).c_str() : "N/A");  // <-- ADDED
   Serial.println("+------------------------------------------------------+");
   Serial.println("  [LilyGO2 - SHT31 Temp & Humidity] --------------------");
-  Serial.printf( "    Air Temperature : %s C\n",     latest.air_temperature  >= 0 ? String(latest.air_temperature, 2).c_str()  : "N/A");
-  Serial.printf( "    Humidity        : %s %%\n",    latest.humidity         >= 0 ? String(latest.humidity, 2).c_str()         : "N/A");
+  Serial.printf( "    Air Temperature : %s C\n",     latest.air_temperature  >= 0 ? String(latest.air_temperature,  2).c_str() : "N/A");
+  Serial.printf( "    Humidity        : %s %%\n",    latest.humidity         >= 0 ? String(latest.humidity,         2).c_str() : "N/A");
+  Serial.printf( "    Battery Voltage : %s V\n",     latest.bat2             >= 0 ? String(latest.bat2,             2).c_str() : "N/A");  // <-- ADDED
   Serial.println("+------------------------------------------------------+");
   Serial.println("  [LilyGO3 - Ultrasonic Distance] ----------------------");
-  Serial.printf( "    Distance        : %s m\n",     latest.distance         >= 0 ? String(latest.distance, 3).c_str()         : "N/A");
+  Serial.printf( "    Distance        : %s m\n",     latest.distance         >= 0 ? String(latest.distance,         3).c_str() : "N/A");
+  Serial.printf( "    Battery Voltage : %s V\n",     latest.bat3             >= 0 ? String(latest.bat3,             2).c_str() : "N/A");  // <-- ADDED
   Serial.println("+======================================================+");
 }
 
@@ -268,14 +302,13 @@ void loop() {
   server.handleClient();
 
   String received = "";
-  int state = radio.receive(received, 3000);  // 3s timeout so web server stays responsive
+  int state = radio.receive(received, 3000);
 
   if (state == RADIOLIB_ERR_NONE) {
     latest.packet_count++;
     latest.lora_rssi = (int)radio.getRSSI();
     latest.lora_snr  = radio.getSNR();
 
-    // Timestamp
     unsigned long s = millis() / 1000;
     char ts[20];
     snprintf(ts, sizeof(ts), "%02lu:%02lu:%02lu", s/3600, (s%3600)/60, s%60);
